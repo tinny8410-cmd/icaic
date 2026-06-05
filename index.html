@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>電訪中心 · 排班系統</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4361ee">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="排班系統">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading-overlay" style="position:fixed;inset:0;background:#f4f6fb;z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px">
+  <div style="width:52px;height:52px;background:#4361ee;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:26px">📞</div>
+  <div style="font-size:16px;font-weight:700;color:#1a1a2e">電訪中心</div>
+  <div style="font-size:12px;color:#888;font-family:monospace">載入中…</div>
+  <div style="width:36px;height:3px;background:#e0e0e0;border-radius:2px;overflow:hidden;margin-top:4px">
+    <div style="height:100%;background:#4361ee;border-radius:2px;animation:ldbar 1.2s ease-in-out infinite"></div>
+  </div>
+</div>
+<style>
+@keyframes ldbar{0%{width:0%;margin-left:0}50%{width:100%;margin-left:0}100%{width:0%;margin-left:100%}}
+</style>
+
+<!-- LOGIN -->
+<div id="login-screen" style="display:flex">
+  <div class="login-wrap">
+    <div class="login-logo">📞</div>
+    <div class="login-title">電訪中心</div>
+    <div class="login-sub">排班管理系統 v2.0</div>
+    <div id="step-role" style="display:none">
+      <div class="login-cards">
+        <div class="login-card" id="login-admin-card" onclick="selectLoginRole('admin')">
+          <div class="login-card-icon" style="background:var(--accent-bg)">🔧</div>
+          <div><div class="login-card-title">管理後台</div><div class="login-card-sub">督導員 / 超級管理員</div></div>
+        </div>
+        <div class="login-card" id="login-agent-card" onclick="selectLoginRole('agent')">
+          <div class="login-card-icon" style="background:var(--green-bg)">👤</div>
+          <div><div class="login-card-title">電訪員入口</div><div class="login-card-sub">查看班表、申請請假</div></div>
+        </div>
+
+      </div>
+    </div>
+    <div id="step-admin-login" style="display:none">
+      <div style="font-size:12px;color:var(--text3);font-family:var(--mono);margin-bottom:14px;text-align:left">管理後台登入</div>
+      <div class="form-row" style="margin-bottom:10px;text-align:left">
+        <label class="login-label">帳號</label>
+        <input id="admin-username-inp" class="login-input" placeholder="輸入帳號" autocomplete="username">
+      </div>
+      <div class="form-row" style="margin-bottom:16px;text-align:left">
+        <label class="login-label">密碼</label>
+        <input id="admin-password-inp" class="login-input" type="password" placeholder="輸入密碼" onkeydown="if(event.key==='Enter')doAdminLogin()">
+      </div>
+      <div id="admin-login-err" class="login-err"></div>
+      <button class="btn primary" style="width:100%;padding:10px;font-size:14px;margin-bottom:10px" onclick="doAdminLogin()">登入</button>
+      <button class="btn ghost" style="width:100%;font-size:12px" onclick="showStep('role')">← 返回</button>
+    </div>
+    <div id="step-agent-login" style="display:none">
+      <div style="font-size:12px;color:var(--text3);font-family:var(--mono);margin-bottom:14px;text-align:left">電訪員入口</div>
+      <div class="form-row" style="margin-bottom:10px;text-align:left">
+        <label class="login-label">員工編號</label>
+        <input id="agent-empno-inp" class="login-input" placeholder="例：4001">
+      </div>
+      <div class="form-row" style="margin-bottom:16px;text-align:left">
+        <label class="login-label">密碼（預設為員工編號）</label>
+        <input id="agent-pass-inp" class="login-input" type="password" placeholder="輸入密碼" onkeydown="if(event.key==='Enter')doAgentLogin()">
+      </div>
+      <div id="agent-login-err" class="login-err"></div>
+      <button class="btn primary" style="width:100%;padding:10px;font-size:14px;margin-bottom:10px" onclick="doAgentLogin()">進入系統</button>
+      <button class="btn ghost" style="width:100%;font-size:12px" onclick="showStep('role')">← 返回</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- AGENT PORTAL -->
+<div id="agent-app" style="display:none">
+  <div class="agent-header">
+    <div class="agent-header-title">📞 電訪中心 · 電訪員入口</div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span class="agent-header-user" id="agent-username"></span>
+      <button class="btn" style="padding:4px 10px;font-size:11px;color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.1)" onclick="doLogout()">登出</button>
+    </div>
+  </div>
+  <div class="agent-body">
+    <nav class="agent-sidebar">
+      <div class="nav-sec" style="margin-top:4px">我的班表</div>
+      <button class="nav-item active" onclick="agentGotoPage('my-schedule',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>個人班表
+      </button>
+      <button class="nav-item" onclick="agentGotoPage('full-schedule',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>總班表
+      </button>
+      <div class="nav-sec">請假</div>
+      <button class="nav-item" onclick="agentGotoPage('apply-leave',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>申請請假
+      </button>
+      <button class="nav-item" onclick="agentGotoPage('leave-history',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>請假紀錄
+      </button>
+      <div class="nav-sec">資源</div>
+      <button class="nav-item" onclick="agentGotoPage('questionnaires',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>問卷
+      </button>
+      <button class="nav-item" onclick="agentGotoPage('work-rules',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>工作規範
+      </button>
+      <button class="nav-item" id="agent-sup-nav" onclick="agentGotoPage('sup-schedule-view',this)" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>督導班表
+      </button>
+    </nav>
+    <div class="agent-content">
+      <div class="agent-page active" id="apage-my-schedule"><div id="agent-my-content"></div></div>
+      <div class="agent-page" id="apage-full-schedule">
+        <div class="readonly-notice">🔒 總班表僅供查看，班次調整請聯絡管理員</div>
+        <div id="agent-full-content"></div>
+      </div>
+      <div class="agent-page" id="apage-apply-leave"><div id="agent-apply-content"></div></div>
+      <div class="agent-page" id="apage-leave-history"><div id="agent-history-content"></div></div>
+      <div class="agent-page" id="apage-questionnaires"><div id="agent-questionnaire-content"></div></div>
+      <div class="agent-page" id="apage-work-rules"><div id="agent-rules-content"></div></div>
+      <div class="agent-page" id="apage-sup-schedule-view"><div id="agent-sup-schedule-content"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN APP -->
+<div id="admin-app" class="app" style="display:none">
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-mark">
+      <div class="logo-icon">📞</div>
+      <div><div class="logo-text">電訪中心</div><div class="logo-sub">管理後台</div></div>
+    </div>
+  </div>
+  <nav class="nav">
+    <div class="nav-sec">班表管理</div>
+    <button class="nav-item active" onclick="gotoPage('schedule',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>班表總覽
+    </button>
+    <button class="nav-item" onclick="gotoPage('import',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>匯入班表
+    </button>
+    <button class="nav-item" onclick="gotoPage('sup-schedule',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>督導排班
+    </button>
+    <div class="nav-sec">請假管理</div>
+    <button class="nav-item" id="nav-leave-btn" onclick="gotoPage('leave',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      請假管理<span class="nav-badge" id="leave-pending-badge" style="display:none">0</span>
+    </button>
+    <div class="nav-sec">統計分析</div>
+    <button class="nav-item" onclick="gotoPage('stats-hours',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>月工時統計
+    </button>
+    <button class="nav-item" onclick="gotoPage('stats-daily',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>每日出勤人數
+    </button>
+    <button class="nav-item" onclick="gotoPage('stats-missing',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>未排班人員
+    </button>
+    <button class="nav-item" onclick="gotoPage('salary',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>薪資計算
+    </button>
+    <div class="nav-sec">員工視角</div>
+    <button class="nav-item" onclick="gotoPage('emp-view',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>員工個人班表
+    </button>
+    <div class="nav-sec">設定</div>
+    <button class="nav-item" onclick="gotoPage('settings',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M20 12h2M2 12h2M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41"/></svg>系統設定
+    </button>
+    <div class="nav-sec">資源</div>
+    <button class="nav-item" onclick="gotoPage('questionnaires',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>問卷管理
+    </button>
+    <button class="nav-item" onclick="gotoPage('work-rules',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>工作規範
+    </button>
+    <button class="nav-item" id="nav-supervisor-btn" onclick="gotoPage('supervisors',this)" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      督導員管理<span class="nav-badge" id="supervisor-pending-badge" style="display:none">0</span>
+    </button>
+  </nav>
+  <div class="sidebar-footer">
+    <button class="btn ghost" onclick="doLogout()" style="width:100%;font-size:11px;color:var(--text3);justify-content:flex-start;padding:6px 8px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>登出
+    </button>
+    <div style="font-size:10px;color:var(--text3);font-family:var(--mono);padding:2px 8px">電訪中心排班系統 v2.0</div>
+  </div>
+</aside>
+<div class="main">
+  <div class="header">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="page-title" id="page-title">班表總覽</div>
+      <div class="month-nav" id="month-nav">
+        <button class="icon-btn" onclick="changeMonth(-1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15,18 9,12 15,6"/></svg></button>
+        <span class="month-label" id="month-label"></span>
+        <button class="icon-btn" onclick="changeMonth(1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9,18 15,12 9,6"/></svg></button>
+      </div>
+    </div>
+    <div class="header-right" id="header-actions"></div>
+  </div>
+  <div class="content" id="content"></div>
+</div>
+</div>
+
+<!-- Modals -->
+<div class="modal-bg" id="modal-emp">
+  <div class="modal">
+    <h3 id="modal-emp-title">新增員工</h3>
+    <div class="form-row"><label>姓名</label><input id="inp-name" placeholder="例：王小明"></div>
+    <div class="form-row"><label>職稱</label><input id="inp-role" value="電訪專員"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-emp')">取消</button>
+      <button class="btn primary" onclick="saveEmp()">儲存</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="modal-preview">
+  <div class="modal" style="width:480px">
+    <h3>確認匯入</h3>
+    <div id="preview-body" style="font-size:12px;color:var(--text2);margin-bottom:12px;font-family:var(--mono);max-height:260px;overflow-y:auto;line-height:1.8"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-preview')">取消</button>
+      <button class="btn primary" onclick="confirmImport()">確認匯入</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="modal-export">
+  <div class="modal" style="width:420px">
+    <h3>匯出月班表</h3>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px;font-family:var(--mono)" id="export-month-display"></div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r)">
+        <input type="checkbox" id="exp-eve" checked style="width:14px;height:14px;accent-color:var(--accent)">
+        <div><div style="font-size:13px;font-weight:500">晚班班表</div><div style="font-size:11px;color:var(--text3);font-family:var(--mono)">18:30–21:30</div></div>
+        <span class="sp sp-eve" style="margin-left:auto;font-size:10px">晚班</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r)">
+        <input type="checkbox" id="exp-noon" checked style="width:14px;height:14px;accent-color:var(--accent)">
+        <div><div style="font-size:13px;font-weight:500">午班班表</div><div style="font-size:11px;color:var(--text3);font-family:var(--mono)">14:30–17:30</div></div>
+        <span class="sp sp-noon" style="margin-left:auto;font-size:10px">午班</span>
+      </label>
+    </div>
+    <div style="background:var(--surface2);border-radius:var(--r);padding:10px 12px;font-size:11px;color:var(--text3);margin-bottom:14px">格式與原版 PDF 相同：日期、上班人員、人數</div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-export')">取消</button>
+      <button class="btn primary" onclick="doExport()">匯出 PDF</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="modal-leave">
+  <div class="modal" style="width:400px">
+    <h3 id="modal-leave-title">新增請假</h3>
+    <div class="form-row"><label>員工</label>
+      <select id="leave-emp-id" style="width:100%;padding:8px 10px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font)"></select>
+    </div>
+    <div class="form-row"><label>請假日期</label>
+      <input type="date" id="leave-date" style="width:100%;padding:8px 10px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font)">
+    </div>
+    <div class="form-row"><label>請假班別</label>
+      <select id="leave-shift-sel" style="width:100%;padding:8px 10px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font)">
+        <option value="noon">午班（14:30–17:30）</option>
+        <option value="eve">晚班（18:30–21:30）</option>
+        <option value="all">全天（午班＋晚班）</option>
+      </select>
+    </div>
+    <div class="form-row"><label>請假原因（選填）</label>
+      <input id="leave-reason" placeholder="例：家庭事務、身體不適…" style="width:100%;padding:8px 10px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font)">
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-leave')">取消</button>
+      <button class="btn primary" onclick="saveLeave()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Import Questionnaire -->
+<div class="modal-bg" id="modal-import-q">
+  <div class="modal" style="width:440px">
+    <h3>匯入問卷</h3>
+    <div class="form-row">
+      <label>問卷名稱 <span style="color:var(--red)">*</span></label>
+      <input id="iq-name" placeholder="例：116年XX調查問卷" style="width:100%;padding:8px 10px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font)">
+    </div>
+    <div class="form-row">
+      <label>標籤（縣市 / 主題）</label>
+      <input id="iq-tag" placeholder="例：桃園市、交通、教育…" style="width:100%;padding:8px 10px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font)">
+    </div>
+    <div class="form-row">
+      <label>說明（選填）</label>
+      <input id="iq-desc" placeholder="簡短說明此份問卷…" style="width:100%;padding:8px 10px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font)">
+    </div>
+    <div class="form-row">
+      <label>上傳檔案 <span style="color:var(--red)">*</span></label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="cursor:pointer">
+          <span class="btn" style="font-size:12px;display:inline-flex;align-items:center;gap:5px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            選擇檔案
+          </span>
+          <input id="iq-file" type="file" accept=".docx,.pdf,.doc,.xlsx" style="display:none" onchange="iqFileSelected(this)">
+        </label>
+        <span id="iq-filename" style="font-size:12px;color:var(--text3);font-family:var(--mono)">尚未選擇檔案</span>
+        <span id="iq-type-display" style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--accent-bg);color:var(--accent);font-family:var(--mono)"></span>
+      </div>
+    </div>
+    <div style="background:var(--surface2);border-radius:var(--r);padding:9px 12px;font-size:11px;color:var(--text3);margin-bottom:4px">
+      📦 檔案會上傳至 Firebase Storage，所有人皆可下載，重新整理後也不會消失。
+    </div>
+    <div id="iq-err" style="display:none;background:var(--red-bg);color:var(--red);border-radius:var(--r);padding:8px 12px;font-size:12px;margin-bottom:4px;font-family:var(--mono)"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-import-q')">取消</button>
+      <button class="btn primary" id="iq-save-btn" onclick="saveImportQuestionnaire()">確認匯入</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Add Supervisor -->
+<div class="modal-bg" id="modal-add-sup">
+  <div class="modal" style="width:380px">
+    <h3>新增督導員</h3>
+    <div class="form-row">
+      <label>姓名</label>
+      <input id="add-sup-name" placeholder="督導員真實姓名" style="width:100%;padding:8px 10px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font)">
+    </div>
+    <div class="form-row">
+      <label>帳號</label>
+      <input id="add-sup-username" placeholder="設定登入帳號" style="width:100%;padding:8px 10px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font)">
+    </div>
+    <div class="form-row">
+      <label>密碼</label>
+      <input id="add-sup-password" type="password" placeholder="至少 4 位" style="width:100%;padding:8px 10px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-family:var(--font)">
+    </div>
+    <div id="add-sup-err" style="display:none;background:var(--red-bg);color:var(--red);border-radius:var(--r);padding:8px 12px;font-size:12px;margin-bottom:4px;font-family:var(--mono)"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-add-sup')">取消</button>
+      <button class="btn primary" onclick="saveAddSupervisor()">新增</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Supervisor Export -->
+<div class="modal-bg" id="modal-sup-export">
+  <div class="modal" style="width:420px">
+    <h3>匯出督導班表</h3>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px;font-family:var(--mono)" id="sup-export-month"></div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r)">
+        <input type="checkbox" id="sup-exp-eve" checked style="width:14px;height:14px;accent-color:#7c3aed">
+        <div><div style="font-size:13px;font-weight:500">晚班班表</div><div style="font-size:11px;color:var(--text3);font-family:var(--mono)">18:30–21:30</div></div>
+        <span style="margin-left:auto;padding:2px 8px;border-radius:4px;font-size:10px;background:#7c3aed22;color:#7c3aed">晚班</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r)">
+        <input type="checkbox" id="sup-exp-noon" checked style="width:14px;height:14px;accent-color:#7c3aed">
+        <div><div style="font-size:13px;font-weight:500">午班班表</div><div style="font-size:11px;color:var(--text3);font-family:var(--mono)">14:30–17:30</div></div>
+        <span style="margin-left:auto;padding:2px 8px;border-radius:4px;font-size:10px;background:#7c3aed22;color:#7c3aed">午班</span>
+      </label>
+    </div>
+    <div style="background:var(--surface2);border-radius:var(--r);padding:10px 12px;font-size:11px;color:var(--text3);margin-bottom:14px">格式與電訪員班表相同：日期、督導人員、人數</div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-sup-export')">取消</button>
+      <button class="btn primary" onclick="doSupExport()">匯出 PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Send Weekly Email -->
+<div class="modal-bg" id="modal-email">
+  <div class="modal" style="width:520px;max-height:80vh;display:flex;flex-direction:column">
+    <h3>寄送本週班表</h3>
+    <div style="background:var(--accent-bg);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--accent);margin-bottom:12px;display:flex;align-items:center;gap:8px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      本週：<strong id="email-week-label"></strong>
+    </div>
+    <div style="background:var(--surface2);border-radius:var(--r);padding:9px 12px;font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.6">
+      點「開啟草稿」會在你的郵件程式（Gmail / Outlook）開啟一封已填好的草稿，確認後按送出即可。<br>
+      或點「一次全開」自動開啟所有人的草稿。
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+      <span>共 <strong id="email-recipient-count" style="color:var(--accent)"></strong> 位電訪員</span>
+      <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">無信箱：<span id="email-no-email-list"></span></div>
+    </div>
+    <div id="email-emp-list" style="overflow-y:auto;flex:1;max-height:320px;padding-right:2px"></div>
+    <div class="modal-footer" style="margin-top:12px">
+      <button class="btn" onclick="closeModal('modal-email')">關閉</button>
+      <button class="btn primary" onclick="openAllMailto()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        一次全開所有草稿
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="js/firebase.js"></script>
+<script src="js/data.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/email.js"></script>
+<script src="js/salary.js"></script>
+<script src="js/sup_schedule.js"></script>
+<script src="js/resources.js"></script>
+<script src="js/agent.js"></script>
+<script src="js/schedule.js"></script>
+<script src="js/import.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/empview.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/export.js"></script>
+<script src="js/app.js"></script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('/sw.js')
+      .then(()=>console.log('SW registered'))
+      .catch(e=>console.log('SW error',e));
+  });
+}
+</script>
+</body>
+</html>
